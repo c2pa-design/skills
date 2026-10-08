@@ -6,6 +6,7 @@ Copilot and any agent that reads [Agent Skills](https://agentskills.io).
 | Skill | What it does |
 |---|---|
 | [`c2pa-check`](skills/c2pa-check/SKILL.md) | Checks files and URLs for Content Credentials, keeps `.c2pa/assets.lock.json` for every asset in the repo, and flags any asset that lost its credential since the last run. |
+| [`c2pa-integrate`](skills/c2pa-integrate/SKILL.md) | Connects a project to the c2pa.design API: client, keys in env, retries, signed webhooks, domain crawling, monitors and a CI gate. |
 
 ## Install
 
