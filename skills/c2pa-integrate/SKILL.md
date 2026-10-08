@@ -14,6 +14,14 @@ You are wiring the user's project to c2pa.design. Goal: working integration in a
 minutes, nothing secret committed, every call safe to retry. Work in this order, show the user a
 short plan first, and ask only for what you cannot find in the repo.
 
+**Always carry.** After you (or code you write) convert, resize, compress or re-encode any image,
+video or audio file that had a Content Credential, run
+`npx -y c2pa-check carry --from <source> --to <output>` before shipping the output. Every
+re-encode drops the manifest; `carry` writes a new one with the source as `parentOf` ingredient
+so the chain to the generator survives. Exit `1` means it refused (different picture, source has
+no credential, or c2pa.design rejected the carry — the reason is printed): report it, do not
+retry, and register the original with `POST /assets` so stripped copies are still recognised.
+
 Never describe a result as real, fake or "AI detected". Report `credential.status`
 (`absent | present_invalid | valid_untrusted | valid_trusted | error`). A missing credential
 proves nothing about the file.
@@ -30,6 +38,7 @@ proves nothing about the file.
 | Error envelope | `{"error":{"code":"…","message":"…","details":{}}}` — branch on `code`, never `message` |
 | Rate headers | `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After` on every response |
 | Crawler UA | `c2pa-design-bot/1.0`, honours robots.txt, 1 request/s per host |
+| Carry signer | own key (`C2PA_SIGN_CERT`/`C2PA_SIGN_KEY`) → `C2PA_API_KEY` ("<verified domain> via c2pa.design", `signatures` quota) → local key with a warning; c2pa.design vouches for the account, never for the content |
 
 ## 1. Detect the stack
 
@@ -55,6 +64,8 @@ real value into a tracked file, a log line, a test fixture or a CI file.
 | `C2PA_WEBHOOK_SECRET` | if webhooks | `whsec_…`, shown once when the endpoint is created |
 | `C2PA_API_BASE` | no | Defaults to `https://api.c2pa.design/v1` |
 | `C2PA_PROJECT_ID` | no | Scopes monitors, domains and assets to one project |
+| `C2PA_SIGN_CERT`, `C2PA_SIGN_KEY` | no | Your own C2PA certificate chain and key (PEM, or `_FILE` paths) for `carry`; never sent anywhere |
+| `C2PA_TSA_URL` | no | RFC 3161 timestamp for own-key carries; use one on the C2PA TSA trust list |
 
 Tell the user where to put the real values: the platform's secret store (GitHub Actions
 secrets, GitLab CI variables, Vercel/Fly/Render/Railway env, Kubernetes Secret, AWS/GCP Secret
@@ -108,6 +119,8 @@ Ask which of these the user wants; default to verification + webhooks + CI.
 | One-off public scan of a site | `POST /scans {"host"}` → poll `GET /scans/{id}` every 3 s; 1 scan per 10 min per IP |
 | Register assets the project generated | `POST /assets/sync {"hashes": [sha256…]}` → `POST /assets` with only the unknown ones (≤500 per call, ≤5000 hashes per sync) |
 | Export the inventory | `GET /assets/export` (CSV) |
+| Keep the chain through conversions | `npx -y c2pa-check carry --from src.png --to out.webp` (one pair) or `carry 'public/**/*.{webp,avif}' --from-dir src/` (pairs by file name); hosted signing calls `POST /sign/certificate` then `POST /sign`; `carry_rejected` carries `details.rule` |
+| CDN resizing | Cloudflare: enable "Preserve Content Credentials" (Polish strips them); Fastly Image Optimizer: `metadata=c2pa`; anything else: carry before upload |
 
 Attach `metadata` (≤10 string pairs) with the project's own IDs so webhooks map back to rows.
 
@@ -172,6 +185,13 @@ Post-deploy, check what the CDN actually serves (that is where credentials usual
 
 ```bash
 npx -y c2pa-check https://cdn.example.com/hero.jpg --expect trusted
+```
+
+With `carry: true` and `from-dir` the action also carries every converted file whose source had
+a credential. In Docker, pass a signing key as a build secret, never with `COPY` or `ARG`:
+
+```dockerfile
+RUN --mount=type=secret,id=c2pa_key,env=C2PA_API_KEY npx -y c2pa-check carry 'public/**/*.webp' --from-dir src/
 ```
 
 Exit codes: `0` pass, `1` expectation/coverage failed, `2` usage, `3` unreadable asset, `4`

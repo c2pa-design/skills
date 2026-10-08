@@ -41,6 +41,26 @@ curl -s https://api.c2pa.design/v1/url-checks -H "content-type: application/json
   -d '{"url":"https://cdn.example.com/hero.jpg"}'
 ```
 
+## Task: convert, resize or compress media (always carry)
+
+Re-encoding strips the Content Credential, and copying the old manifest back breaks its
+signature. After **any** conversion of a file that carries a credential (sharp, cwebp, avifenc,
+ffmpeg, ImageMagick, squoosh, gifsicle, vips, or your own code), carry it into the new file:
+
+```bash
+npx -y c2pa-check carry --from original.png --to optimized.webp
+npx -y c2pa-check carry 'public/**/*.{webp,avif}' --from-dir src/assets   # a whole build
+```
+
+- Exit `0`: the new file has a manifest with the original as its `parentOf` ingredient and
+  `c2pa.transcoded` / `c2pa.resized` actions. Report the printed status.
+- Exit `1`: refused (not the same picture, or the original has no credential, or c2pa.design
+  refused the carry). Tell the user the reason; do not retry or force it.
+- Signer: `C2PA_SIGN_CERT` + `C2PA_SIGN_KEY` if set; else `C2PA_API_KEY` (signs as the
+  organization via c2pa.design); else a local key with a warning. Never print or commit a key.
+- If carry is impossible, register the original (`track.mjs --push`) so stripped copies are
+  still recognised.
+
 ## Task: track every asset in a repo
 
 Run from the repo root. `SKILL_DIR` is the folder this file is in.

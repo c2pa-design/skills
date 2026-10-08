@@ -15,7 +15,9 @@ npx skills add c2pa-design/skills
 npx skills add c2pa-design/skills -a claude-code    # one agent: codex, cursor, gemini-cli, github-copilot
 ```
 
-Claude Code plugin (skill + MCP server):
+Claude Code plugin (skills, MCP server, and a hook that reminds the agent to run
+`c2pa-check carry` after `sharp`, `cwebp`, `avifenc`, `ffmpeg`, `magick`, `convert`, `squoosh`,
+`gifsicle` or `vips` writes media from an original that carries a Content Credential):
 
 ```
 /plugin marketplace add c2pa-design/skills
