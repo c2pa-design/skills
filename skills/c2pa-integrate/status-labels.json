@@ -1,0 +1,134 @@
+{
+  "en": {
+    "absent": {
+      "label": "No Content Credentials",
+      "short": "Absent"
+    },
+    "present_invalid": {
+      "label": "Credentials present, signature invalid",
+      "short": "Invalid"
+    },
+    "valid_untrusted": {
+      "label": "Valid, signer not on the trust list",
+      "short": "Untrusted"
+    },
+    "valid_trusted": {
+      "label": "Valid and trusted",
+      "short": "Trusted"
+    },
+    "error": {
+      "label": "Could not be read",
+      "short": "Error"
+    }
+  },
+  "de": {
+    "absent": {
+      "label": "Keine Content Credentials",
+      "short": "Fehlt"
+    },
+    "present_invalid": {
+      "label": "Credentials vorhanden, Signatur ungültig",
+      "short": "Ungültig"
+    },
+    "valid_untrusted": {
+      "label": "Gültig, Unterzeichner nicht auf der Trust List",
+      "short": "Nicht vertraut"
+    },
+    "valid_trusted": {
+      "label": "Gültig und vertrauenswürdig",
+      "short": "Vertraut"
+    },
+    "error": {
+      "label": "Nicht lesbar",
+      "short": "Fehler"
+    }
+  },
+  "es": {
+    "absent": {
+      "label": "Sin Content Credentials",
+      "short": "Ausente"
+    },
+    "present_invalid": {
+      "label": "Credentials presentes, firma inválida",
+      "short": "Inválido"
+    },
+    "valid_untrusted": {
+      "label": "Válido, firmante fuera de la lista de confianza",
+      "short": "Sin confianza"
+    },
+    "valid_trusted": {
+      "label": "Válido y de confianza",
+      "short": "De confianza"
+    },
+    "error": {
+      "label": "No se pudo leer",
+      "short": "Error"
+    }
+  },
+  "fr": {
+    "absent": {
+      "label": "Aucun Content Credential",
+      "short": "Absent"
+    },
+    "present_invalid": {
+      "label": "Credentials présents, signature invalide",
+      "short": "Invalide"
+    },
+    "valid_untrusted": {
+      "label": "Valide, signataire absent de la liste de confiance",
+      "short": "Non approuvé"
+    },
+    "valid_trusted": {
+      "label": "Valide et de confiance",
+      "short": "De confiance"
+    },
+    "error": {
+      "label": "Illisible",
+      "short": "Erreur"
+    }
+  },
+  "ja": {
+    "absent": {
+      "label": "Content Credentials なし",
+      "short": "なし"
+    },
+    "present_invalid": {
+      "label": "Credentials あり・署名が無効",
+      "short": "無効"
+    },
+    "valid_untrusted": {
+      "label": "有効・署名者はトラストリストに未登録",
+      "short": "未信頼"
+    },
+    "valid_trusted": {
+      "label": "有効かつ信頼された署名",
+      "short": "信頼済み"
+    },
+    "error": {
+      "label": "読み取れませんでした",
+      "short": "エラー"
+    }
+  },
+  "ko": {
+    "absent": {
+      "label": "Content Credentials 없음",
+      "short": "없음"
+    },
+    "present_invalid": {
+      "label": "Credentials 있음, 서명 무효",
+      "short": "무효"
+    },
+    "valid_untrusted": {
+      "label": "유효하지만 서명자가 트러스트 리스트에 없음",
+      "short": "미신뢰"
+    },
+    "valid_trusted": {
+      "label": "유효하고 신뢰됨",
+      "short": "신뢰됨"
+    },
+    "error": {
+      "label": "읽을 수 없음",
+      "short": "오류"
+    }
+  }
+}
