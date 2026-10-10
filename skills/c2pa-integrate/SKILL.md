@@ -214,6 +214,7 @@ Envelope: `{"id", "type", "created_at", "occurred_at", "data"}`. Payload schemas
 | Order | Not guaranteed, even for one object. Use `occurred_at` to drop stale events (e.g. `monitor.run.completed` may arrive before `monitor.regression`) |
 | `ping` | Signed exactly like other events; deduplicate it like any other |
 | Disabling | 20 consecutive failures disable the endpoint and email the organization owners. `POST /webhooks/{id}/enable` re-enables it |
+| Source IP | Deliveries come from the prefixes in `https://c2pa.design/bot/ips.json` (same list as the crawler; `creationTime` moves when it changes). Behind a WAF or firewall, allow them by fetching the list, not by hard-coding. An allowed IP is not proof: always verify the signature |
 | Rotation | `POST /webhooks/{id}/rotate-secret` returns the new secret once; the old one keeps signing for 24 h (`previous_secret_expires_at`), both signatures are sent meanwhile |
 
 **Personal data in payloads.** Fields that echo the customer's own `metadata` verbatim are marked
@@ -346,6 +347,6 @@ do is available there.
 3. `POST /webhooks/{id}/test` and show the handler log line.
 4. Run the CI command locally.
 5. Checklist for the user: env vars and their secret store, DNS TXT record (if a domain), WAF
-   rule (if any), switch from `c2pa_test_` to `c2pa_live_`.
+   rules (if any: the crawler UA, and `https://c2pa.design/bot/ips.json` for webhook deliveries), switch from `c2pa_test_` to `c2pa_live_`.
 
 Docs: https://c2pa.design/docs/agents · https://docs.c2pa.design
