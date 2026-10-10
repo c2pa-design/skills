@@ -130,5 +130,71 @@
       "label": "읽을 수 없음",
       "short": "오류"
     }
+  },
+  "ru": {
+    "absent": {
+      "label": "Content Credentials отсутствуют",
+      "short": "Нет"
+    },
+    "present_invalid": {
+      "label": "Credentials есть, подпись недействительна",
+      "short": "Недействительны"
+    },
+    "valid_untrusted": {
+      "label": "Действительны, подписавшего нет в списке доверия",
+      "short": "Не в списке доверия"
+    },
+    "valid_trusted": {
+      "label": "Действительны, подписавший в списке доверия",
+      "short": "Доверенные"
+    },
+    "error": {
+      "label": "Не удалось прочитать",
+      "short": "Ошибка"
+    }
+  },
+  "zh-CN": {
+    "absent": {
+      "label": "没有 Content Credentials",
+      "short": "无"
+    },
+    "present_invalid": {
+      "label": "存在凭证，签名无效",
+      "short": "无效"
+    },
+    "valid_untrusted": {
+      "label": "有效，签名者不在信任列表中",
+      "short": "未受信任"
+    },
+    "valid_trusted": {
+      "label": "有效且受信任",
+      "short": "受信任"
+    },
+    "error": {
+      "label": "无法读取",
+      "short": "错误"
+    }
+  },
+  "pt-BR": {
+    "absent": {
+      "label": "Sem Content Credentials",
+      "short": "Ausente"
+    },
+    "present_invalid": {
+      "label": "Credenciais presentes, assinatura inválida",
+      "short": "Inválida"
+    },
+    "valid_untrusted": {
+      "label": "Válidas, signatário fora da lista de confiança",
+      "short": "Não confiável"
+    },
+    "valid_trusted": {
+      "label": "Válidas e confiáveis",
+      "short": "Confiável"
+    },
+    "error": {
+      "label": "Não foi possível ler",
+      "short": "Erro"
+    }
   }
 }

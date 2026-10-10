@@ -164,6 +164,7 @@ test('shared vectors signed by the c2pa.design backend verify', () => {
   assert.ok(vectors.length > 0);
   for (const v of vectors) {
     const headers = { 'webhook-id': v.id, 'webhook-timestamp': v.timestamp, 'webhook-signature': v.signature };
-    assert.equal(verify(webhookKey(v.secret), headers, Buffer.from(v.body), Number(v.timestamp)), null, v.name);
+    const got = verify(webhookKey(v.secret), headers, Buffer.from(v.body), Number(v.now));
+    assert.equal(got === null, v.valid, v.name);
   }
 });

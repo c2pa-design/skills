@@ -33,8 +33,11 @@ queue (River, Sidekiq, Celery, BullMQ, SQS…).
 
 ## Test vectors
 
-`vectors.json` was produced by the c2pa.design backend signer. Every suite verifies it, so the
-three receivers and the sender agree byte for byte.
+`vectors.json` follows the c2pa.design backend signer. Every suite runs it, so the three
+receivers and the sender agree byte for byte. Each vector has `now` (the clock to verify at, in
+seconds) and `valid` (the expected outcome): a plain delivery, a delivery during a secret
+rotation (two signatures in `webhook-signature`, accepted with either secret), and a correct
+signature whose timestamp is ten minutes old or ten minutes ahead (rejected).
 
 After deploying, call `POST /webhooks/{id}/test`: a real-signed `ping` should arrive and return
 `204`.

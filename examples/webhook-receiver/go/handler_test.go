@@ -68,6 +68,8 @@ type vector struct {
 	Timestamp string `json:"timestamp"`
 	Body      string `json:"body"`
 	Signature string `json:"signature"`
+	Now       string `json:"now"`
+	Valid     bool   `json:"valid"`
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -289,7 +291,7 @@ func TestSharedVectors(t *testing.T) {
 			v, verr := newVerifier(vec.Secret)
 			require.NoError(t, verr)
 
-			sec, perr := strconv.ParseInt(vec.Timestamp, 10, 64)
+			sec, perr := strconv.ParseInt(vec.Now, 10, 64)
 			require.NoError(t, perr)
 
 			h := http.Header{}
@@ -297,7 +299,9 @@ func TestSharedVectors(t *testing.T) {
 			h.Set("webhook-timestamp", vec.Timestamp)
 			h.Set("webhook-signature", vec.Signature)
 
-			assert.NoError(t, v.verify(h, []byte(vec.Body), time.Unix(sec, 0)))
+			got := v.verify(h, []byte(vec.Body), time.Unix(sec, 0))
+
+			assert.Equal(t, vec.Valid, got == nil, "%v", got)
 		})
 	}
 }

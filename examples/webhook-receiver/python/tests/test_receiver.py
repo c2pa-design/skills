@@ -164,7 +164,8 @@ def test_shared_vectors_from_backend_verify():
     assert vectors
     for v in vectors:
         headers = {"webhook-id": v["id"], "webhook-timestamp": v["timestamp"], "webhook-signature": v["signature"]}
-        assert verify(webhook_key(v["secret"]), headers, v["body"].encode(), int(v["timestamp"])) is None, v["name"]
+        got = verify(webhook_key(v["secret"]), headers, v["body"].encode(), int(v["now"]))
+        assert (got is None) == v["valid"], v["name"]
 
 
 @pytest.fixture
