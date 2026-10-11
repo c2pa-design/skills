@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 metadata:
   homepage: https://c2pa.design/docs/agents
   openapi: https://docs.c2pa.design/openapi.yml
-  version: "3"
+  version: "4"
 ---
 
 # c2pa-integrate
@@ -30,11 +30,11 @@ The only code you write is the webhook receiver (§5), copied from an example.
 
 **Always carry.** After you (or code you write) convert, resize, compress or re-encode any image,
 video or audio file that had a Content Credential, run
-`npx -y c2pa-check@0.3.0 carry --from <source> --to <output>` before shipping the output. Every
+`npx -y c2pa-check carry --from <source> --to <output>` before shipping the output. Every
 re-encode drops the manifest; `carry` writes a new one with the source as `parentOf` ingredient.
 Exit `5` means it refused (`--json` gives `rule`: `different_picture`, `source_unsigned`,
 `low_quality`, `not_comparable`, or the server's `carry_rejected` rule). A changed picture is not
-a carry: see §6.
+a carry: add `--edited` when the step may change it, and see §6.
 
 Never describe a result as real, fake or "AI detected". Report `credential.status`
 (`absent | present_invalid | valid_untrusted | valid_trusted | error`) using the labels in
@@ -53,11 +53,11 @@ credential proves nothing about the file.
 | Network | Outbound HTTPS (443) to `api.c2pa.design` from every place that calls the API or runs `c2pa-check` with a key: servers, CI runners, build containers. Inbound: webhook deliveries (§5) |
 | Auth | `Authorization: Bearer c2pa_live_…` or `c2pa_test_…` |
 | Keys | https://app.c2pa.design → your organization → **API keys** (`/o/<org>/keys`) |
-| Check setup | `GET /whoami` → `key_type`, `organization`, `project`, `plan`, `quota[{metric, used, limit, period_end}]`; or `npx -y c2pa-check@0.3.0 doctor` (also says when this skill is out of date) |
+| Check setup | `GET /whoami` → `key_type`, `organization`, `project`, `plan`, `quota[{metric, used, limit, period_end}]`; or `npx -y c2pa-check doctor` (also says when this skill is out of date) |
 | Error envelope | `{"error":{"code":"…","message":"…","retryable":true,"details":{}}}` — branch on `code`/`retryable`, never `message` |
 | Rate headers | `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After` |
-| CLI | `c2pa-check@0.3.0`, Node ≥ 18, `SHA256SUMS` + provenance attestation on every GitHub release. Linux builds are static (musl): Alpine and distroless work |
-| Error reports | When a command ends with an error (exit 2–5 or a crash) `c2pa-check` sends `{version, os, arch, command, exit_code, code, mime, ci}` to `POST /cli-reports` from a detached process (the command does not wait) and prints what it sends. Fixed slugs only: no file names, paths, URLs, hashes or keys, no API key attached. Off with `C2PA_TELEMETRY=0`, `DO_NOT_TRACK=1` or `--offline` |
+| CLI | `c2pa-check`, current release 0.4.0 (every command in this file runs on it), Node ≥ 18, `SHA256SUMS` + provenance attestation on every GitHub release. Linux builds are static (musl): Alpine and distroless work |
+| Error reports | When a command ends with an error (exit 2–4 or a crash; never for a failed gate, exit 1, or a carry refusal, exit 5) `c2pa-check` sends `{version, os, arch, command, exit_code, code, mime, ci}` to `POST /cli-reports` from a detached process (the command does not wait) and prints what it sends. Fixed slugs only: no file names, paths, URLs, hashes or keys, no API key attached. Off with `C2PA_TELEMETRY=0`, `DO_NOT_TRACK=1` or `--offline` |
 | Crawler UA | `c2pa-design-bot/1.0`, honours robots.txt, 1 request/s per host |
 | Carry signer | own key (`C2PA_SIGN_CERT`/`C2PA_SIGN_KEY`) → `C2PA_API_KEY` ("<verified domain> via c2pa.design", `signatures` quota) → local key with a warning; c2pa.design vouches for the account, never for the content |
 
@@ -126,7 +126,7 @@ spec:
 
 Istio: a `ServiceEntry` for `api.c2pa.design` (port 443, `resolution: DNS`). Plain
 `NetworkPolicy` without FQDN support: route through the cluster's egress proxy and set
-`HTTPS_PROXY`. Verify from inside the pod: `npx -y c2pa-check@0.3.0 doctor` → `ok network`.
+`HTTPS_PROXY`. Verify from inside the pod: `npx -y c2pa-check doctor` → `ok network`.
 
 ## 1. Detect the stack
 
@@ -156,7 +156,8 @@ real value into a tracked file, a log line, a test fixture or a CI file.
 | `C2PA_TSA_URL` | no | RFC 3161 timestamp for own-key carries |
 | `C2PA_TELEMETRY` | no | `0` turns the anonymous error reports off |
 
-**Getting the key.** Ask the user to run `npx -y c2pa-check@0.3.0 login --test` (add
+**Getting the key.** Never ask the user to paste a key into the chat or a file in the repository.
+Ask them to run `npx -y c2pa-check login --test` (add
 `--ci github` or `--ci gitlab` to also store it as the repository's `C2PA_API_KEY` secret). It
 prints a link and a code; they approve it in a browser as an owner or admin; the key is saved in
 `~/.config/c2pa-check/credentials` and used whenever `C2PA_API_KEY` is unset. You cannot approve
@@ -229,8 +230,8 @@ secret) and run `apply` from the deploy job. It is safe on every deploy and dele
 ```
 
 ```bash
-npx -y c2pa-check@0.3.0 apply --ping          # webhooks (PUT by URL), monitors (by name), domains (by host)
-npx -y c2pa-check@0.3.0 apply --wait 600      # also wait up to 10 min for the domain proof
+npx -y c2pa-check apply --ping          # webhooks (PUT by URL), monitors (by name), domains (by host)
+npx -y c2pa-check apply --wait 600      # also wait up to 10 min for the domain proof
 ```
 
 | Part | Behaviour |
@@ -252,7 +253,10 @@ npx -y c2pa-check@0.3.0 apply --wait 600      # also wait up to 10 min for the d
 | Crawl a site | `POST /domains {"host"}` → DNS `txt_record` or `file_token` at `file_url` → `POST /domains/{id}/verify`; recrawl `POST /domains/{id}/crawl` |
 | One-off public scan | `POST /scans {"host"}` → poll `GET /scans/{id}` every 3 s |
 | Register assets at runtime | `POST /assets/sync {"hashes"}` → `POST /assets` with only the unknown ones (body in §6). From a build or CI: `c2pa-check register` |
-| Export the inventory | `GET /assets/export` (CSV) |
+| Export the inventory | `GET /assets/export` (CSV; ends with `name`, `origin`, `origin_signer`) |
+| Read the inventory | `GET /assets` → each item has `name` (file name, else the credential title) and, when hosted signing made it, `origin {kind: carry\|composite, source_signer, source_asset_id, created_at}`; `preview_url` only for files seen at a URL |
+| Remove an asset | `DELETE /assets/{id}` → `204`; for trial outputs and mistakes. A file still on a crawled domain comes back as a new asset |
+| Source of a carried file | `result.source.category` follows the parent: a file carried or edited from an AI-generated original stays `ai-generated`, a composite with an AI component is `ai-composite`; `source.inherited: true` marks it |
 | CDN resizing | Cloudflare: "Preserve Content Credentials"; Fastly IO: `metadata=c2pa`; anything else: carry before upload |
 
 Attach `metadata` with the project's own IDs so webhooks map back to rows. If the site sits behind
@@ -335,7 +339,8 @@ Pick by what the step does to the picture:
 | Step | Do | Result |
 |---|---|---|
 | Re-encode, resize, compress, format change (PNG → WebP) | `c2pa-check carry --from src --to out` | Source is `parentOf`; same picture checked |
-| Edit or combine (chroma-key removal, crop, atlas, sprite sheet, collage) | `c2pa-check carry --compose a.png b.png … --to atlas.webp` | A new work: `c2pa.created` (digital source type `composite`) + `c2pa.placed`; every source is a `componentOf` ingredient with its manifest kept. `--edited` for a single-source edit: source `parentOf`, `c2pa.opened` + `c2pa.edited` |
+| Edit of one source (chroma-key removal, crop, retouch) | `c2pa-check carry --from src --to out --edited` | One call: the same picture is carried; a changed one is signed as an edit, source `parentOf`, `c2pa.opened` + `c2pa.edited`, status `composed`, exit `0` |
+| Combine (atlas, sprite sheet, collage) | `c2pa-check carry --compose a.png b.png … --to atlas.webp` | A new work: `c2pa.created` (digital source type `composite`) + `c2pa.placed`; every source is a `componentOf` ingredient with its manifest kept |
 | No credential wanted on the output, or sources unsigned | `c2pa-check register` on the sources **and** the output | Inventory and stripped-copy matching only; no credential in the file |
 
 `--compose` uses the same signer order as a carry. With `C2PA_API_KEY`, c2pa.design signs the
@@ -354,14 +359,24 @@ was composed from these sources; c2pa.design checked the sources' credentials, n
 Registering only the sources' hashes does not cover an output that differs from them — register
 the output too.
 
-For a pipeline like generate → chroma key → crop → atlas → WebP: compose the atlas from the
-generated sources, then `carry` the atlas to WebP, then register the final files.
+For a pipeline like generate → chroma key → crop → atlas → WebP: sign at every step that changes
+the picture and feed the signed file to the next step (`--edited` after the key and the crop,
+`--compose` for the atlas, a plain `carry` to WebP), then register the final files. A step that
+writes an unsigned file breaks the chain; never repair it by looking the original up by file name.
+
+| Fact | Value |
+|---|---|
+| Weight | a credential adds about 6 KB plus the manifest store of each signed source (22 KB in a generator PNG we measured); weight budgets apply to the signed bytes |
+| Rerun | write with `--out <shipped file>`: when that file already holds a valid credential from the same sources and shows the same pixels as `--to`, the answer is `skipped`, nothing is sent and no signature is spent. Delete the output to force a new signature |
+| Local key → your key | an output signed with the local key is signed again on the next run once `C2PA_API_KEY` or your own certificate is set |
+| Folder (`--from-dir`) | a derived file with no original (`unpaired`), several (`ambiguous`) or an original without a credential (`unsigned`) is passed over, exit `0`; `--strict` makes each of them exit `1` |
+| Scripts that sign file by file | install once (`brew install c2pa-design/tap/c2pa-check`, the release binary, or a dev dependency) and call `c2pa-check`; `npx -y` costs 1–2 s per call |
 
 ### Register files
 
 ```bash
-npx -y c2pa-check@0.3.0 register 'public/**/*.{jpg,png,webp}' 'design/**/*.png'   # or no globs: the checks in c2pa.json
-npx -y c2pa-check@0.3.0 --register                                                # gate and register in one run
+npx -y c2pa-check register 'public/**/*.{jpg,png,webp}' 'design/**/*.png'   # or no globs: the checks in c2pa.json
+npx -y c2pa-check --register                                                # gate and register in one run
 ```
 
 It checks each file locally, asks which sha256 hashes are unknown (`POST /assets/sync`, 5000 per
@@ -384,9 +399,9 @@ not just a hash (status, signer and fingerprints are read from it):
 
 ## 7. CI gate
 
-Pin the version everywhere: `c2pa-check@0.3.0`. Release archives ship `SHA256SUMS`; the npm
-package is published with provenance. With no target the command runs every entry of `checks` in
-`c2pa.json` (§4) and names the one that failed.
+In CI pin the release you tested: `c2pa-check@<version>` (current release: §0). Release archives
+ship `SHA256SUMS`; the npm package is published with provenance. With no target the command runs
+every entry of `checks` in `c2pa.json` (§4) and names the one that failed.
 
 | Per check | Meaning |
 |---|---|
@@ -399,7 +414,7 @@ package is published with provenance. With no target the command runs every entr
 Create the baseline once and commit it; refresh it the same way after an intended change:
 
 ```bash
-npx -y c2pa-check@0.3.0 --update-baseline
+npx -y c2pa-check --update-baseline
 ```
 
 One run can write several reports: the Nth `--output` takes the Nth `--format`
@@ -411,7 +426,6 @@ GitHub Actions:
 ```yaml
 - uses: c2pa-design/c2pa-check-action@v1
   with:
-    version: v0.3.0
     format: junit
     output: c2pa-check.xml
     register: ${{ github.ref == 'refs/heads/main' }}
@@ -427,10 +441,10 @@ c2pa-check:
   variables:
     npm_config_cache: "$CI_PROJECT_DIR/.npm"
   cache:
-    key: c2pa-check-0.3.0
+    key: c2pa-check
     paths: [.npm/]
   script:
-    - npx -y c2pa-check@0.3.0 --format junit --output c2pa-check.xml --format json --output c2pa-check.json
+    - npx -y c2pa-check --format junit --output c2pa-check.xml --format json --output c2pa-check.json
   artifacts:
     when: always
     reports:
@@ -443,7 +457,7 @@ c2pa-register:
   needs: []
   allow_failure: true
   script:
-    - npx -y c2pa-check@0.3.0 register
+    - npx -y c2pa-check register
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $C2PA_API_KEY'
       changes: *c2pa-changes
@@ -460,14 +474,14 @@ pipelines:
         caches: [node]
         condition: { changesets: { includePaths: ["public/**", "design/**", "c2pa.json", "c2pa-baseline.json"] } }
         script:
-          - npx -y c2pa-check@0.3.0 --format junit --output test-results/c2pa-check.xml
+          - npx -y c2pa-check --format junit --output test-results/c2pa-check.xml
   branches:
     main:
       - step:
           name: c2pa-register
           image: node:22-alpine
           script:
-            - npx -y c2pa-check@0.3.0 register
+            - npx -y c2pa-check register
 ```
 
 CircleCI:
@@ -478,9 +492,9 @@ jobs:
     docker: [{image: node:22-alpine}]
     steps:
       - checkout
-      - restore_cache: {keys: [c2pa-check-0.3.0]}
-      - run: npx -y c2pa-check@0.3.0 --format junit --output test-results/c2pa-check.xml --register
-      - save_cache: {key: c2pa-check-0.3.0, paths: [~/.npm]}
+      - restore_cache: {keys: [c2pa-check]}
+      - run: npx -y c2pa-check --format junit --output test-results/c2pa-check.xml --register
+      - save_cache: {key: c2pa-check, paths: [~/.npm]}
       - store_test_results: {path: test-results}
 ```
 
@@ -495,7 +509,7 @@ generated media; 100 only once every shipped file is carried, composed or delibe
 (exclude those paths from the glob).
 
 Post-deploy, check what the CDN serves:
-`npx -y c2pa-check@0.3.0 https://cdn.example.com/hero.jpg --expect trusted`.
+`npx -y c2pa-check https://cdn.example.com/hero.jpg --expect trusted`.
 
 Exit codes: `0` pass, `1` expectation, coverage or baseline failed, `2` usage, `3` unreadable
 asset, `4` network or API call failed, `5` carry refused.
@@ -503,7 +517,7 @@ asset, `4` network or API call failed, `5` carry refused.
 **Docker.** Pass the key as a build secret, never `COPY` or `ARG`:
 
 ```dockerfile
-RUN --mount=type=secret,id=c2pa_key,env=C2PA_API_KEY npx -y c2pa-check@0.3.0 carry 'public/**/*.webp' --from-dir src/
+RUN --mount=type=secret,id=c2pa_key,env=C2PA_API_KEY npx -y c2pa-check carry 'public/**/*.webp' --from-dir src/
 ```
 
 BuildKit's cache key for this `RUN` covers the command and the inputs, not the secret: an
@@ -524,13 +538,13 @@ everything the MCP tools do is available there.
 
 ## 9. Verify and hand over
 
-1. `npx -y c2pa-check@0.3.0 doctor --require api_key,webhook_secret` (list only what this
+1. `npx -y c2pa-check doctor --require api_key,webhook_secret` (list only what this
    integration uses): key type, organization, quota left, webhook secret format, Node version,
    skill version. `--require` turns a missing value into exit `1`, so the same line is a CI
    pre-flight. Fix anything that fails before going on.
 2. One `POST /verifications` with the test key against
    `https://c2pa.design/samples/ai-signed.jpg`; print `credential.status`.
-3. `npx -y c2pa-check@0.3.0 apply --ping` and show the handler log line for the `ping`.
+3. `npx -y c2pa-check apply --ping` and show the handler log line for the `ping`.
 4. Run the CI command locally.
 5. Checklist for the user: env vars and their secret store, DNS TXT record (if a domain), egress
    to `api.c2pa.design:443` from pods and CI runners (§0 Network access), WAF rules (if any: the

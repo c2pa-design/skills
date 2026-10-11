@@ -76,7 +76,8 @@ export function message(found) {
     'The conversion you just ran wrote media from an original that carries a Content Credential.',
     'Re-encoding strips the credential. Carry it into the new file now:',
     ...lines,
-    'If carry exits 1, report its reason to the user instead of retrying.',
+    'If the step changed the picture (crop, background removal, retouch), add --edited.',
+    'If carry exits 5 it refused: report its reason to the user instead of retrying.',
   ].join('\n')
 }
 

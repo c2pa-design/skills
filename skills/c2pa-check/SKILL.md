@@ -4,7 +4,7 @@ description: Verify and track C2PA Content Credentials on images, video and audi
 license: MIT OR Apache-2.0
 metadata:
   homepage: https://c2pa.design/docs/agents
-  version: "1"
+  version: "2"
 ---
 
 # c2pa-check
@@ -49,13 +49,24 @@ ffmpeg, ImageMagick, squoosh, gifsicle, vips, or your own code), carry it into t
 
 ```bash
 npx -y c2pa-check carry --from original.png --to optimized.webp
+npx -y c2pa-check carry --from gen.png --to cut.png --edited              # crop, key removal, retouch
+npx -y c2pa-check carry --compose a.png b.png --to atlas.webp             # atlas, sprite sheet, collage
 npx -y c2pa-check carry 'public/**/*.{webp,avif}' --from-dir src/assets   # a whole build
 ```
 
 - Exit `0`: the new file has a manifest with the original as its `parentOf` ingredient and
-  `c2pa.transcoded` / `c2pa.resized` actions. Report the printed status.
-- Exit `1`: refused (not the same picture, or the original has no credential, or c2pa.design
-  refused the carry). Tell the user the reason; do not retry or force it.
+  `c2pa.transcoded` / `c2pa.resized` actions. With `--edited` and a changed picture it is signed
+  as an edit of the source (`c2pa.opened` + `c2pa.edited`, status `composed`). Report the
+  printed status.
+- Exit `5`: refused (not the same picture without `--edited`, or the original has no
+  credential, or c2pa.design refused the carry). Tell the user the reason (`--json` gives
+  `rule`); do not retry or force it.
+- `--from-dir`: a derived file with no original (`unpaired`), several (`ambiguous`) or an
+  original without a credential (`unsigned`) is passed over, exit `0`; `--strict` makes each of
+  them exit `1`.
+- Rerun: write with `--out <shipped file>`. When that file already holds a valid credential
+  from the same sources and the same pixels as `--to`, the answer is `skipped` and no signature
+  is spent.
 - Signer: `C2PA_SIGN_CERT` + `C2PA_SIGN_KEY` if set; else `C2PA_API_KEY` (signs as the
   organization via c2pa.design); else a local key with a warning. Never print or commit a key.
 - If carry is impossible, register the original (`track.mjs --push`) so stripped copies are
@@ -118,9 +129,9 @@ After generating or saving a generated image:
 3. Then search the code for the step that will touch it later: `sharp(`, `jimp`, `imagemagick`,
    `convert`, `ffmpeg`, `canvas.toBlob`, `image/draw`, Pillow `save(`, CDN resize params. Any
    re-encode or resize breaks the signature (`present_invalid`) or drops the record
-   (`absent`). Fixes, cheapest first: serve the original bytes; resize in a step that re-signs
-   with the original as an ingredient (`c2patool`, `c2pa-node`, `c2pa-python`); keep the signed
-   original in storage next to the derivative and link to it.
+   (`absent`). Fixes, cheapest first: serve the original bytes; run `c2pa-check carry` right
+   after the step (`--edited` when it changes the picture), see the carry task above; keep the
+   signed original in storage next to the derivative and link to it.
 
 ## Task: is production still serving credentials
 
@@ -131,8 +142,7 @@ c2pa-check https://cdn.example.com/hero.jpg --expect present
 ```
 
 For a schedule and a dashboard, create a monitor with the API key:
-https://c2pa.design/docs/monitors. For a one-page Article 50 evidence report, point the user to
-https://c2pa.design/audit.
+https://c2pa.design/docs/monitors.
 
 ## Reading a result
 
