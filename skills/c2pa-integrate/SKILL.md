@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 metadata:
   homepage: https://c2pa.design/docs/agents
   openapi: https://docs.c2pa.design/openapi.yml
-  version: "4"
+  version: "5"
 ---
 
 # c2pa-integrate
@@ -56,6 +56,7 @@ credential proves nothing about the file.
 | Check setup | `GET /whoami` → `key_type`, `organization`, `project`, `plan`, `quota[{metric, used, limit, period_end}]`; or `npx -y c2pa-check doctor` (also says when this skill is out of date) |
 | Error envelope | `{"error":{"code":"…","message":"…","retryable":true,"details":{}}}` — branch on `code`/`retryable`, never `message` |
 | Rate headers | `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After` |
+| Public coverage | `GET /public/coverage/{host}`, no key, 600/hour per address, cacheable for 5 minutes (`ETag`). Returns `{schema, host, name, verified_at, assets, valid, trusted, coverage_pct, trusted_pct, declared_ai, sources{crawl,ci,api}, projects[], checked_at, recheck_minutes, stale, small_sample, trust_list_version}`, plus `signers[]` and `trend[]` only when the owner shows them, for an organization that published its space under a domain it verified (dashboard → **Public page**, owner only, off by default); `404 not_found` otherwise, the same for an unknown and an unpublished host. Badge: `GET /public/coverage/{host}/badge.svg` (same limit and cache). When `small_sample` is true show no percentage; when `stale` is true say the checks are more than seven days old. Counts cover the assets that organization registered, as last checked: never present the share as a statement about a whole product, and never read a missing credential as evidence |
 | CLI | `c2pa-check`, current release 0.4.0 (every command in this file runs on it), Node ≥ 18, `SHA256SUMS` + provenance attestation on every GitHub release. Linux builds are static (musl): Alpine and distroless work |
 | Error reports | When a command ends with an error (exit 2–4 or a crash; never for a failed gate, exit 1, or a carry refusal, exit 5) `c2pa-check` sends `{version, os, arch, command, exit_code, code, mime, ci}` to `POST /cli-reports` from a detached process (the command does not wait) and prints what it sends. Fixed slugs only: no file names, paths, URLs, hashes or keys, no API key attached. Off with `C2PA_TELEMETRY=0`, `DO_NOT_TRACK=1` or `--offline` |
 | Crawler UA | `c2pa-design-bot/1.0`, honours robots.txt, 1 request/s per host |
@@ -140,6 +141,21 @@ Read the repo before writing anything:
   shared store exists (Redis, Postgres) — §5 needs it.
 - Where media lives and where it is produced: uploads, generator calls (OpenAI / Firefly /
   Gemini), and build steps that change pictures (chroma key, crop, atlas, sprite sheets).
+- What re-encodes or serves media. Each of these drops the credential unless handled; search
+  dependencies, build scripts, Dockerfiles and CDN config for them:
+
+| Found in the repo | Do |
+|---|---|
+| `sharp`, `libvips`, ImageMagick (`convert`, `magick`), Pillow, `cwebp`, `ffmpeg`, Squoosh in a script or build step | `carry` right after the step (§6); `--edited` when it crops or retouches |
+| `next/image`, an image loader or optimizer plugin | `carry` at build time and serve the carried file (`unoptimized` for it), or put a monitor checkpoint on the optimized URL |
+| WordPress or another CMS that makes image sizes | The sizes are unsigned: `register` originals and sizes, monitor a served size |
+| Cloudflare Images / Polish | Images → Transformations → "Preserve Content Credentials"; Polish strips them first |
+| Fastly Image Optimizer | `metadata=c2pa` |
+| Cloudinary | `fl_c2pa` |
+| imgix, Vercel, Akamai, Shopify, any other CDN or image proxy | Not documented: carry before upload and add a monitor checkpoint on the URL it serves (§4) |
+
+List every hit in the plan you show the user, with the fix next to it. A re-encode you did not
+cover is where the credential is lost.
 
 ## 2. Secrets
 
@@ -157,8 +173,9 @@ real value into a tracked file, a log line, a test fixture or a CI file.
 | `C2PA_TELEMETRY` | no | `0` turns the anonymous error reports off |
 
 **Getting the key.** Never ask the user to paste a key into the chat or a file in the repository.
-Ask them to run `npx -y c2pa-check login --test` (add
-`--ci github` or `--ci gitlab` to also store it as the repository's `C2PA_API_KEY` secret). It
+Ask them to run `npx -y c2pa-check login` (add
+`--ci github` or `--ci gitlab` to also store it as the repository's `C2PA_API_KEY` secret;
+`--test` for a sandbox key, see §0 Test keys). It
 prints a link and a code; they approve it in a browser as an owner or admin; the key is saved in
 `~/.config/c2pa-check/credentials` and used whenever `C2PA_API_KEY` is unset. You cannot approve
 the code yourself, and a Docker build or CI job cannot either: those read the secret.
@@ -169,8 +186,8 @@ local anyway. So the integration can be committed before the user has an account
 `doctor --require api_key` only where a missing key must stop the job.
 
 Tell the user where the real values go (GitHub/GitLab CI variables, Kubernetes Secret, Vercel/Fly
-env, a secret manager). Check `.gitignore` covers `.env`. Use a `c2pa_test_` key until §9 passes,
-then swap to `c2pa_live_`.
+env, a secret manager). Check `.gitignore` covers `.env`. A `c2pa_test_` key is optional, for
+trying calls without spending the plan: it cannot sign, so never leave one in CI or production.
 
 ## 3. API client — only if the server calls the API
 
@@ -251,6 +268,7 @@ npx -y c2pa-check apply --wait 600      # also wait up to 10 min for the domain 
 | Verify a file the server holds | `POST /verifications {"upload": true, "filename", "content_type", "size_bytes"}` → `PUT` bytes to `upload.url` with `upload.headers` → `POST /verifications/{id}/complete` → webhook `verification.completed` or poll `GET /verifications/{id}` |
 | Watch a pipeline | `POST /monitors {"name", "schedule": "hourly", "checkpoints": [{"name": "CDN", "url": "…", "expect": "present_trusted"}]}` |
 | Crawl a site | `POST /domains {"host"}` → DNS `txt_record` or `file_token` at `file_url` → `POST /domains/{id}/verify`; recrawl `POST /domains/{id}/crawl` |
+| Stop crawling a site | `POST /domains/{id}/pause` → `state: paused`: no new crawl or re-check starts and a running crawl stops before its next request; assets, history and the proof stay, no alerts. `POST /domains/{id}/resume` starts a crawl within a minute. Both are idempotent, `409` while `pending`. `DELETE /domains/{id}` stops tracking for good |
 | One-off public scan | `POST /scans {"host"}` → poll `GET /scans/{id}` every 3 s |
 | Register assets at runtime | `POST /assets/sync {"hashes"}` → `POST /assets` with only the unknown ones (body in §6). From a build or CI: `c2pa-check register` |
 | Export the inventory | `GET /assets/export` (CSV; ends with `name`, `origin`, `origin_signer`) |
@@ -542,13 +560,23 @@ everything the MCP tools do is available there.
    integration uses): key type, organization, quota left, webhook secret format, Node version,
    skill version. `--require` turns a missing value into exit `1`, so the same line is a CI
    pre-flight. Fix anything that fails before going on.
-2. One `POST /verifications` with the test key against
+2. One `POST /verifications` against
    `https://c2pa.design/samples/ai-signed.jpg`; print `credential.status`.
 3. `npx -y c2pa-check apply --ping` and show the handler log line for the `ping`.
 4. Run the CI command locally.
-5. Checklist for the user: env vars and their secret store, DNS TXT record (if a domain), egress
-   to `api.c2pa.design:443` from pods and CI runners (§0 Network access), WAF rules (if any: the
-   crawler UA, and `https://c2pa.design/bot/ips.json` for webhook deliveries), switch from
-   `c2pa_test_` to `c2pa_live_`.
+5. Give the user this checklist with each line marked done, not needed, or theirs to do. You
+   cannot do the lines that live outside the repository; say so and name the place.
+
+| # | On their side | Done when |
+|---|---|---|
+| 1 | `C2PA_API_KEY` (and `C2PA_WEBHOOK_SECRET`) in the secret store of every environment that runs the code: CI, server, workers | `doctor --require …` is `ok` there; `whoami` says `live key` |
+| 2 | Egress to `api.c2pa.design:443` from pods and CI runners (§0 Network access) | `doctor` prints `ok network` from inside the pod and the job |
+| 3 | WAF or firewall: UA `c2pa-design-bot` and the prefixes in `https://c2pa.design/bot/ips.json`, fetched, not hard-coded | A `ping` delivery arrives; the domain shows no `last_error` |
+| 4 | DNS TXT record or well-known file for each domain | `apply --wait` exits `0` |
+| 5 | Every step from §1 that re-encodes media is followed by `carry` | The gate passes on the build output with `expect` or `baseline` |
+| 6 | CDN or image proxy keeps the credential (its setting from §1), or files are carried before upload | A monitor checkpoint on the served URL, resized variant included, meets its `expect` |
+| 7 | Baseline committed, the gate runs in CI on every merge request, `--register` on the main branch | A build that drops a credential fails and names the file |
+| 8 | Webhook receiver deployed on every replica behind the same URL, events deduplicated in the shared store (§5) | `apply --ping` shows one handled `ping` |
+| 9 | Someone receives the alerts: monitor `alert_channels` or the webhook reaches a channel people read | A test delivery is seen by a person |
 
 Docs: https://c2pa.design/docs/agents · https://docs.c2pa.design
