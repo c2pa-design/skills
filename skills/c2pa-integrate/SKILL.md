@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 metadata:
   homepage: https://c2pa.design/docs/agents
   openapi: https://docs.c2pa.design/openapi.yml
-  version: "5"
+  version: "8"
 ---
 
 # c2pa-integrate
@@ -53,11 +53,14 @@ credential proves nothing about the file.
 | Network | Outbound HTTPS (443) to `api.c2pa.design` from every place that calls the API or runs `c2pa-check` with a key: servers, CI runners, build containers. Inbound: webhook deliveries (§5) |
 | Auth | `Authorization: Bearer c2pa_live_…` or `c2pa_test_…` |
 | Keys | https://app.c2pa.design → your organization → **API keys** (`/o/<org>/keys`) |
-| Check setup | `GET /whoami` → `key_type`, `organization`, `project`, `plan`, `quota[{metric, used, limit, period_end}]`; or `npx -y c2pa-check doctor` (also says when this skill is out of date) |
+| Check setup | `GET /whoami` → `key_type`, `organization`, `project {id, name, archived}` (only for a project-scoped key), `resolved_project {id, name, default}` (where a write without `project_id` lands), `plan`, `quota[{metric, used, limit, period_end}]`; or `npx -y c2pa-check doctor` (prints `project <name>`, `(default)` when the key has no project, `FAIL` when the project is archived; also says when this skill is out of date) |
 | Error envelope | `{"error":{"code":"…","message":"…","retryable":true,"details":{}}}` — branch on `code`/`retryable`, never `message` |
+| Rejected key | `401 unauthorized` carries `details.reason`: `revoked` (issue a new key), `unknown` (wrong key or wrong environment) or `malformed` (truncated or quoted in the secret store). `403 forbidden` for a missing scope carries `details.scope`. `doctor` prints both |
+| Projects | Every row belongs to a project; rules in §4. `403 project_mismatch`: a project-scoped key named another project (`details.project_id` is the key's). `project_archived` with `details {project_id, name}`: `409` on a write that names an archived project, `403` on every call except `GET /whoami` for a key scoped to one. Neither is retryable: fix the configuration |
+| Inventory coverage | `GET /assets/coverage?project_id=&domain_id=` → `{assets, unsigned_by_design, expected, valid, traced, trusted, coverage_pct, traced_pct, trusted_pct}` over tracked assets of the last 30 days. `expected` = `assets` − `unsigned_by_design` and is the denominator of all three shares. `valid`: intact credential. `traced`: intact credential whose chain reaches a signer on the C2PA trust list (a hosted carry from a signed original is traced, the file itself stays `valid_untrusted`). `trusted`: `valid_trusted`. This is the number the dashboard shows; `GET /coverage` is the series of `POST /verifications` calls only |
 | Rate headers | `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After` |
-| Public coverage | `GET /public/coverage/{host}`, no key, 600/hour per address, cacheable for 5 minutes (`ETag`). Returns `{schema, host, name, verified_at, assets, valid, trusted, coverage_pct, trusted_pct, declared_ai, sources{crawl,ci,api}, projects[], checked_at, recheck_minutes, stale, small_sample, trust_list_version}`, plus `signers[]` and `trend[]` only when the owner shows them, for an organization that published its space under a domain it verified (dashboard → **Public page**, owner only, off by default); `404 not_found` otherwise, the same for an unknown and an unpublished host. Badge: `GET /public/coverage/{host}/badge.svg` (same limit and cache). When `small_sample` is true show no percentage; when `stale` is true say the checks are more than seven days old. Counts cover the assets that organization registered, as last checked: never present the share as a statement about a whole product, and never read a missing credential as evidence |
-| CLI | `c2pa-check`, current release 0.4.0 (every command in this file runs on it), Node ≥ 18, `SHA256SUMS` + provenance attestation on every GitHub release. Linux builds are static (musl): Alpine and distroless work |
+| Public coverage | `GET /public/coverage/{host}`, no key, 600/hour per address, cacheable for 5 minutes (`ETag`). Returns `{schema, host, name, verified_at, assets, unsigned_by_design, expected, valid, traced, trusted, coverage_pct, traced_pct, trusted_pct, declared_ai, sources{crawl,ci,api}, projects[], checked_at, recheck_minutes, stale, small_sample, trust_list_version}`, plus `signers[]` and `trend[]` only when the owner shows them, for an organization that published its space under a domain it verified (dashboard → **Public page**, owner only, off by default); `404 not_found` otherwise, the same for an unknown and an unpublished host. Badge: `GET /public/coverage/{host}/badge.svg` (same limit and cache). Shares are over `expected` (`assets` − `unsigned_by_design`); show `unsigned_by_design` next to any share and never word `traced` as "trusted": it says where the chain leads, not who signed the file. When `small_sample` is true (too few `expected` assets) show no percentage; when `stale` is true say the checks are more than seven days old. Counts cover the assets that organization registered, as last checked: never present the share as a statement about a whole product, and never read a missing credential as evidence |
+| CLI | `c2pa-check`, current release 0.5.0 (every command in this file runs on it), Node ≥ 18, `SHA256SUMS` + provenance attestation on every GitHub release. Linux builds are static (musl): Alpine and distroless work |
 | Error reports | When a command ends with an error (exit 2–4 or a crash; never for a failed gate, exit 1, or a carry refusal, exit 5) `c2pa-check` sends `{version, os, arch, command, exit_code, code, mime, ci}` to `POST /cli-reports` from a detached process (the command does not wait) and prints what it sends. Fixed slugs only: no file names, paths, URLs, hashes or keys, no API key attached. Off with `C2PA_TELEMETRY=0`, `DO_NOT_TRACK=1` or `--offline` |
 | Crawler UA | `c2pa-design-bot/1.0`, honours robots.txt, 1 request/s per host |
 | Carry signer | own key (`C2PA_SIGN_CERT`/`C2PA_SIGN_KEY`) → `C2PA_API_KEY` ("<verified domain> via c2pa.design", `signatures` quota) → local key with a warning; c2pa.design vouches for the account, never for the content |
@@ -152,6 +155,7 @@ Read the repo before writing anything:
 | Cloudflare Images / Polish | Images → Transformations → "Preserve Content Credentials"; Polish strips them first |
 | Fastly Image Optimizer | `metadata=c2pa` |
 | Cloudinary | `fl_c2pa` |
+| A web game, an app behind a login, an engine build (Unity, Godot, Phaser, asset bundles) | A crawl sees none of it: `register` the source art and the build output in CI (§6), and add the write-time check with `/assets/sync` (§5). Files packed into engine bundles carry no credential; the registered sources are the record |
 | imgix, Vercel, Akamai, Shopify, any other CDN or image proxy | Not documented: carry before upload and add a monitor checkpoint on the URL it serves (§4) |
 
 List every hit in the plan you show the user, with the fix next to it. A re-encode you did not
@@ -167,7 +171,7 @@ real value into a tracked file, a log line, a test fixture or a CI file.
 | `C2PA_API_KEY` | if the server, CI or scripts call the API | Bearer token. Server-side only — never in a browser bundle (`NEXT_PUBLIC_`, `VITE_`, `REACT_APP_` are wrong) |
 | `C2PA_WEBHOOK_SECRET` | if webhooks | `whsec_` + standard base64 of 24–64 bytes. Generate it yourself in the secret store (`echo "whsec_$(openssl rand -base64 32)"`) and `apply` registers it; it is then never printed anywhere |
 | `C2PA_API_BASE` | no | Defaults to `https://api.c2pa.design/v1` |
-| `C2PA_PROJECT_ID` | no | Scopes monitors, domains and assets to one project |
+| `C2PA_PROJECT_ID` | no | Project for everything the CLI writes (assets, monitors, domains, hosted signatures). Wins over `project` in `c2pa.json`. Leave unset with a project-scoped key, or to use the name in `c2pa.json` (§4) |
 | `C2PA_SIGN_CERT`, `C2PA_SIGN_KEY` | no | Own C2PA certificate chain and key (PEM, or `_FILE` paths) for `carry`; never sent anywhere |
 | `C2PA_TSA_URL` | no | RFC 3161 timestamp for own-key carries |
 | `C2PA_TELEMETRY` | no | `0` turns the anonymous error reports off |
@@ -232,6 +236,7 @@ secret) and run `apply` from the deploy job. It is safe on every deploy and dele
 
 ```json
 {
+  "project": "Game client",
   "checks": [
     { "name": "shipped", "paths": ["public/**/*.{jpg,png,webp}"], "baseline": "c2pa-baseline.json" },
     { "name": "sources", "paths": ["design/**/*.png"], "coverage": 39, "git_tracked": true }
@@ -257,8 +262,28 @@ npx -y c2pa-check apply --wait 600      # also wait up to 10 min for the domain 
 | Domains | A new host prints its DNS TXT record and well-known file; `apply` rechecks the proof on every run. `--wait` polls every 15 s and exits `1` if still pending |
 | Monitors | Each entry is the `MonitorWrite` body; an existing name is updated |
 | Unknown keys | An error, not ignored: a typo cannot silently disable a gate |
+| `project` | A name, 1–64 characters. Found or created on first use (`PUT /projects {"name"}`: `201` created, `200` existing, case-insensitive, safe to repeat), once per run; `register`, `--register`, `apply` and hosted `carry` then send its id. Needs an organization-wide key with the `monitors` scope |
 
 `checks` are used by the CI gate (§7) and by `register` (§6). Every section is optional.
+
+### Which project a write lands in
+
+Applies to `/verifications`, `/assets`, `/assets/sync`, `/domains`, `/monitors`, `/sign` and
+`/sign/certificate`. Nothing is stored outside a project.
+
+| Key | `project_id` sent | Stored project |
+|---|---|---|
+| project-scoped | none, or the key's own | the key's project |
+| project-scoped | another | refused, `403 project_mismatch` |
+| organization-wide (or a dashboard session) | a project of the organization | that project |
+| organization-wide | none | the organization's `Default` project |
+| any | an archived project | refused, `409 project_archived` |
+
+The CLI sends `C2PA_PROJECT_ID` when set, else the id of `project` from `c2pa.json`, else nothing
+(the table decides). A project-scoped key also reads only its project: lists, the export and
+coverage are limited to it and a single object of another project answers `404`. Register a file
+from CI and track its domain under the same project: the crawl then finds the same asset instead
+of creating a second one.
 
 ### Direct API calls
 
@@ -268,12 +293,19 @@ npx -y c2pa-check apply --wait 600      # also wait up to 10 min for the domain 
 | Verify a file the server holds | `POST /verifications {"upload": true, "filename", "content_type", "size_bytes"}` → `PUT` bytes to `upload.url` with `upload.headers` → `POST /verifications/{id}/complete` → webhook `verification.completed` or poll `GET /verifications/{id}` |
 | Watch a pipeline | `POST /monitors {"name", "schedule": "hourly", "checkpoints": [{"name": "CDN", "url": "…", "expect": "present_trusted"}]}` |
 | Crawl a site | `POST /domains {"host"}` → DNS `txt_record` or `file_token` at `file_url` → `POST /domains/{id}/verify`; recrawl `POST /domains/{id}/crawl` |
+| Media on other hosts (`game.`, `app.`, `cdn.`) | One domain = one host, crawled from its own home page and sitemaps (40 pages); media is collected from any host those pages reference. `POST /domains {"host": "game.example.com"}` for each host that has pages: under a domain verified by DNS it returns `state: verified` with no new proof (a file proof covers one host). A host with no pages needs a sitemap, named in its `robots.txt` or at `/sitemap.xml`. `hint: "few_assets"` on a domain means the crawl read it and found fewer than 10 files: add hosts or `register` |
 | Stop crawling a site | `POST /domains/{id}/pause` → `state: paused`: no new crawl or re-check starts and a running crawl stops before its next request; assets, history and the proof stay, no alerts. `POST /domains/{id}/resume` starts a crawl within a minute. Both are idempotent, `409` while `pending`. `DELETE /domains/{id}` stops tracking for good |
 | One-off public scan | `POST /scans {"host"}` → poll `GET /scans/{id}` every 3 s |
 | Register assets at runtime | `POST /assets/sync {"hashes"}` → `POST /assets` with only the unknown ones (body in §6). From a build or CI: `c2pa-check register` |
+| Catch a file published around the pipeline (converted on a laptop, written straight to storage) | Where the service stores a file: sha256 of the bytes → `POST /assets/sync {"hashes": ["<sha256 hex>"]}` (≤ 5000 per call, no bytes sent). A hash in `unknown` was never registered: log it with your own row ID, or refuse the write until the file went through `carry` and `register`. Works without a public URL |
 | Export the inventory | `GET /assets/export` (CSV; ends with `name`, `origin`, `origin_signer`) |
 | Read the inventory | `GET /assets` → each item has `name` (file name, else the credential title) and, when hosted signing made it, `origin {kind: carry\|composite, source_signer, source_asset_id, created_at}`; `preview_url` only for files seen at a URL |
 | Remove an asset | `DELETE /assets/{id}` → `204`; for trial outputs and mistakes. A file still on a crawled domain comes back as a new asset |
+| Move, delete or mark many assets | `POST /assets/batch {"action": "move" \| "delete" \| "set_expects_credential", "ids": [≤ 500], "project_id", "expects_credential"}` → `{moved, merged, deleted, updated, skipped}`, one transaction. A moved asset whose bytes the target project already holds is merged into that row (`merged`). Ids that are unknown or outside the key's reach are `skipped`. Key needs the `monitors` scope |
+| A file that cannot carry a credential (drawn by code, made from an unsigned source) | `"expect": "absent"` on its check in `c2pa.json`: `register` sends `expects_credential: false`. Or `PATCH /assets/{id} {"expects_credential": false}`, or the batch action. The asset leaves the coverage denominator and is counted in `unsigned_by_design`; a valid credential found on it later sets it back |
+| Move a domain to another project | `PATCH /domains/{id} {"project_id"}`: the proof, state and history stay, and every asset live on the domain moves with it |
+| A host that is already tracked | `POST /domains` answers `409 conflict` with `details {domain_id, project_id, project_name, project_archived}`: move that domain, or restore its project in the dashboard, instead of proving the host again |
+| Does a carried file still lead to its signer | `result.origin {status: traced \| untraced \| none, signer_name, relationship, depth}`: `traced` when the file's own credential is valid and it, or an ingredient on its chain, is signed by a signer on the trust list. `credential.status` is unchanged by it. Each `ingredients[]` entry has its own `credential_status` and `signer_name`. `GET /assets` items carry `origin_status` and `origin_signer` |
 | Source of a carried file | `result.source.category` follows the parent: a file carried or edited from an AI-generated original stays `ai-generated`, a composite with an AI component is `ai-composite`; `source.inherited: true` marks it |
 | CDN resizing | Cloudflare: "Preserve Content Credentials"; Fastly IO: `metadata=c2pa`; anything else: carry before upload |
 
@@ -346,7 +378,17 @@ included); `monitor.regression` contains checkpoint names. No payload holds an I
 `type`; log `data` only if the metadata you send is not personal. c2pa.design keeps sent payloads
 30 days: https://c2pa.design/legal/privacy.
 
-Then call `POST /webhooks/{id}/test`, confirm the `ping` arrives and verifies, and keep the
+A new endpoint is sent a signed `ping` the moment it is created, and `POST /webhooks/{id}/test`
+(or `apply --ping`) sends another. Read the outcome from our side with `GET /webhooks`:
+
+| `last_delivery` | Meaning |
+|---|---|
+| `status: delivered` | Your handler answered `2xx`: the firewall lets us in and the route exists |
+| `status: failed`, `failure_reason: timeout \| dns \| tls \| connect \| network` | The request never reached the handler: firewall, WAF allow-list (`bot/ips.json`), DNS or certificate |
+| `status: failed`, `failure_reason: http_status`, `response_code` | The handler answered outside `2xx`: wrong path, or the signature check refused it (secret mismatch) |
+| `status: pending` | Queued or between retries; read again in a few seconds |
+
+Confirm the `ping` arrives and verifies, and keep the
 example's tests: valid signature, modified body, 10-minute-old timestamp, redelivery, signed but
 unparseable body.
 
@@ -399,7 +441,8 @@ npx -y c2pa-check --register                                                # ga
 
 It checks each file locally, asks which sha256 hashes are unknown (`POST /assets/sync`, 5000 per
 call) and sends only those (`POST /assets`, 500 per call), with retries. Bytes never leave the
-machine. Needs `C2PA_API_KEY`; `C2PA_PROJECT_ID` scopes it. Exit `4` when the API call failed.
+machine. Needs `C2PA_API_KEY`; the project follows §4. Files of a check with `"expect": "absent"`
+are registered with `expects_credential: false`. Exit `4` when the API call failed.
 
 Calling the API yourself: `POST /assets` takes the **whole result object** of a check per item,
 not just a hash (status, signer and fingerprints are read from it):
@@ -407,6 +450,9 @@ not just a hash (status, signer and fingerprints are read from it):
 ```json
 {"items": [{"location": "public/hero.webp", "source": "skill", "result": { …one element's "result" from `c2pa-check --format json`… }}]}
 ```
+
+Optional per item: `project_id` (§4) and `expects_credential: false` for a file that cannot carry
+a credential.
 
 | `source` | Send it when |
 |---|---|
@@ -425,8 +471,9 @@ every entry of `checks` in `c2pa.json` (§4) and names the one that failed.
 |---|---|
 | `paths` | Globs. `public/**` in the examples is only an example: list every place shipped media lives (CDN uploads kept in the backend, generator sources in `design/`) |
 | `baseline` | File of `path → status`. The build fails when a file that had a valid credential has lost it. Catches one lost file even at 0 % or 39 % coverage; prefer it to a percentage |
-| `coverage` | Minimum share of `valid_trusted` files, for sets where a percentage is the goal |
-| `expect` | `present`, `trusted` or `absent` for every file |
+| `coverage` | Minimum share of covered files, for sets where a percentage is the goal |
+| `coverage_metric` | What `coverage` counts: `trusted` (default: `valid_trusted`), `traced` (valid, and the chain reaches a signer on the trust list: use it for files signed by hosted `carry`) or `valid` (any intact credential). Flag for a single set: `--coverage-metric`. Reports name the metric next to the share |
+| `expect` | `present`, `trusted` or `absent` for every file. Files of an `absent` check are outside every coverage denominator |
 | `git_tracked` | Count only files git tracks, so a laptop and CI see the same set |
 
 Create the baseline once and commit it; refresh it the same way after an intended change:
@@ -562,7 +609,10 @@ everything the MCP tools do is available there.
    pre-flight. Fix anything that fails before going on.
 2. One `POST /verifications` against
    `https://c2pa.design/samples/ai-signed.jpg`; print `credential.status`.
-3. `npx -y c2pa-check apply --ping` and show the handler log line for the `ping`.
+3. `npx -y c2pa-check apply --ping`, show the handler log line for the `ping`, then
+   `GET /webhooks` and report `last_delivery.status` (§5). Both directions are now shown to the
+   user in the dashboard under **Integration → Connection**: the `doctor` call in step 1 marks
+   their side as connected, the delivered `ping` marks the webhook.
 4. Run the CI command locally.
 5. Give the user this checklist with each line marked done, not needed, or theirs to do. You
    cannot do the lines that live outside the repository; say so and name the place.
@@ -571,7 +621,7 @@ everything the MCP tools do is available there.
 |---|---|---|
 | 1 | `C2PA_API_KEY` (and `C2PA_WEBHOOK_SECRET`) in the secret store of every environment that runs the code: CI, server, workers | `doctor --require …` is `ok` there; `whoami` says `live key` |
 | 2 | Egress to `api.c2pa.design:443` from pods and CI runners (§0 Network access) | `doctor` prints `ok network` from inside the pod and the job |
-| 3 | WAF or firewall: UA `c2pa-design-bot` and the prefixes in `https://c2pa.design/bot/ips.json`, fetched, not hard-coded | A `ping` delivery arrives; the domain shows no `last_error` |
+| 3 | WAF or firewall: UA `c2pa-design-bot` and the prefixes in `https://c2pa.design/bot/ips.json`, fetched, not hard-coded | `GET /webhooks` shows `last_delivery.status: delivered`; the domain shows no `last_error` |
 | 4 | DNS TXT record or well-known file for each domain | `apply --wait` exits `0` |
 | 5 | Every step from §1 that re-encodes media is followed by `carry` | The gate passes on the build output with `expect` or `baseline` |
 | 6 | CDN or image proxy keeps the credential (its setting from §1), or files are carried before upload | A monitor checkpoint on the served URL, resized variant included, meets its `expect` |
