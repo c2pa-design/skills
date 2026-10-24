@@ -5,7 +5,7 @@ license: MIT OR Apache-2.0
 metadata:
   homepage: https://c2pa.design/docs/agents
   openapi: https://docs.c2pa.design/openapi.yml
-  version: "10"
+  version: "13"
 ---
 
 # c2pa-integrate
@@ -40,7 +40,7 @@ The only code you write is the webhook receiver (§6), copied from an example.
 
 **Always carry.** After you (or code you write) convert, resize, compress or re-encode any image,
 video or audio file that had a Content Credential, run
-`npx -y c2pa-check@0.5.0 carry --from <source> --to <output>` before shipping the output. Every
+`npx -y c2pa-check@0.6.0 carry --from <source> --to <output>` before shipping the output. Every
 re-encode drops the manifest; `carry` writes a new one with the source as `parentOf` ingredient.
 Exit `5` means it refused (`--json` gives `rule`: `different_picture`, `source_unsigned`,
 `low_quality`, `not_comparable`, or the server's `carry_rejected` rule). A changed picture is not
@@ -59,7 +59,7 @@ credential proves nothing about the file.
 |---|---|
 | REST base | `https://api.c2pa.design/v1` |
 | OpenAPI 3 (public) | `https://docs.c2pa.design/openapi.yml` — includes every webhook payload (`WebhookEvent*`, index `x-webhooks`) |
-| Remote MCP | `https://api.c2pa.design/mcp` — protocol `2026-07-28`, `2025-11-25`, `2025-06-18`, `2025-03-26` (negotiated). Without a key: `verify_url`, `inspect_manifest`, `ecosystem_lookup`, `trust_status` (20 calls/hour per IP); `check_pipeline` needs a key |
+| Remote MCP | `https://api.c2pa.design/mcp` — protocol `2026-07-28`, `2025-11-25`, `2025-06-18`, `2025-03-26` (negotiated). Without a key: `verify_url`, `inspect_manifest`, `ecosystem_lookup` (a slug that is not a tested product answers with the trust directory entry), `trust_status` (20 calls/hour per IP); `check_pipeline` needs a key |
 | Auth | `Authorization: Bearer c2pa_live_…` or `c2pa_test_…` |
 | Keys | https://app.c2pa.design → your organization → **API keys** (`/o/<org>/keys`), or `c2pa-check login` (§3) |
 | Check setup | `GET /whoami` → `key_type`, `organization`, `project {id, name, archived}` (project-scoped key only), `resolved_project {id, name, default}` (where a write without `project_id` lands), `plan`, `quota[{metric, used, limit, period_end}]`. Or `c2pa-check doctor`: prints `project <name>`, `(default)` for a key without a project, `FAIL` for an archived project, and says when this skill is out of date |
@@ -69,9 +69,11 @@ credential proves nothing about the file.
 | Rate headers | `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After` |
 | Public coverage | `GET /public/coverage/{host}`, no key, 600/hour per address, cacheable 5 min (`ETag`). Returns `{schema, host, name, verified_at, assets, unsigned_by_design, expected, valid, traced, trusted, coverage_pct, traced_pct, trusted_pct, declared_ai, sources{crawl,ci,api}, projects[], checked_at, recheck_minutes, stale, small_sample, trust_list_version}`, plus `signers[]` and `trend[]` when the owner shows them, for an organization that published its space under a verified domain (dashboard → **Public page**, owner only, off by default); `404 not_found` for an unknown or unpublished host. Badge: `/public/coverage/{host}/badge.svg`. Show `unsigned_by_design` next to any share, never word `traced` as "trusted", show no percentage when `small_sample`, say the checks are over seven days old when `stale`. Counts cover registered assets only: never present them as a statement about a whole product |
 | Public catalog | `GET /public/catalog` (no key, 600/hour): organizations c2pa.design listed with their written permission, each the coverage document plus `description` and `listed_at`. For a listed host, `GET /public/coverage/{host}/assets` returns up to 300 files `{location, status, signer_name, generator, source_category, claim, actions[], ingredients[], first_seen, last_seen, checked_at}` and `truncated`; `404` for any host not listed. Being listed is arranged by email (info@c2pa.design), not by API |
-| CLI | `c2pa-check`, current release 0.5.0 (every command here runs on it), Node ≥ 18, `SHA256SUMS` + provenance attestation on every GitHub release. Linux builds are static (musl): Alpine and distroless work. Pin it once in CI (§8) |
+| Trust directory | No key. `GET /directory` (every organisation on a C2PA trust list: `slug, name, roles[], lists[], kinds[], listed_since, max_assurance_level, files_seen, products, certificates_until, ca, claimed, indexable`), `GET /directory/{slug}` (adds `items[]` per list record or certificate, `events[]`, `wild`, `repos[]`, `badge`; an alias answers with the canonical `slug`), `GET /directory/{slug}/badge.svg`; 1200/hour per address, cacheable 1 h. `GET /trust-lists` (each mirrored list: `source_url, licence, version, fetched_at, count, state, sha256, mirror_url`), `GET /trust-lists/{list}/mirror` (CC BY 4.0 lists only), `GET /trust-lists/changes?list=&slug=&before=&limit=` (newest first; pass `next` as `before`); 1200/hour. `GET /open-source` (600/hour). A verification's `result.signer.directory.slug` names the entry when there is one. Listing says who signs, never that a file is accurate |
+| CLI | `c2pa-check`, current release 0.6.0 (every command here runs on it), Node ≥ 18, `SHA256SUMS` + provenance attestation on every GitHub release. Linux builds are static (musl): Alpine and distroless work. Pin it once in CI (§8) |
 | Error reports | When a command ends with an error (exit 2–4 or a crash; never exit 1 or 5) `c2pa-check` sends `{version, os, arch, command, exit_code, code, mime, ci}` to `POST /cli-reports` from a detached process and prints what it sends. No file names, paths, URLs, hashes or keys. Off with `C2PA_TELEMETRY=0`, `DO_NOT_TRACK=1` or `--offline` |
 | Crawler | UA `c2pa-design-bot/1.0`, honours robots.txt, 1 request/s per host, from the prefixes in `https://c2pa.design/bot/ips.json` |
+| Watermarks | `result.watermarks[] {algorithm, payload, encoding, signpost?}` when the engine finds an Adobe TrustMark (JPEG, PNG, WebP; absent otherwise). A watermark never changes `credential.status` and is not proof of origin: anyone can embed any payload. `registry_match.method` is `watermark` (the copy carries an identifier c2pa.design issued for the registered original, PDQ within 64) or `pdq` (PDQ within 31) |
 | Carry signer | own key (`C2PA_SIGN_CERT`/`C2PA_SIGN_KEY`) → `C2PA_API_KEY` ("<verified domain> via c2pa.design", `signatures` quota) → local key with a warning; c2pa.design vouches for the account, never for the content |
 
 ### What each status means for the user's own files
@@ -118,6 +120,8 @@ Over a sandbox cap: `402 usage_limit_exceeded` with `details.sandbox: true`.
 | Monitor checkpoints | 1–25 (plan may be lower) |
 | Recrawl a domain | ≥ 10 min apart |
 | Public scan | 1 per 10 min per IP |
+| Trust directory | 1200/hour per address (`/directory`, `/trust-lists`), 600/hour (`/open-source`) |
+| `POST /assets/watermark` | 600/hour for every caller, keys included; JPEG, PNG or WebP, ≤ 64 MiB |
 
 The same limits are `maxItems`/`maxLength`/`maxProperties` in the OpenAPI.
 
@@ -149,7 +153,7 @@ spec:
 
 Istio: a `ServiceEntry` for `api.c2pa.design` (port 443, `resolution: DNS`). Plain
 `NetworkPolicy` without FQDN support: route through the egress proxy and set `HTTPS_PROXY`.
-Verify from inside the pod: `npx -y c2pa-check@0.5.0 doctor` → `ok network`.
+Verify from inside the pod: `npx -y c2pa-check@0.6.0 doctor` → `ok network`.
 
 ## 1. Domain first: the read-only win
 
@@ -225,7 +229,7 @@ it without printing it.
 | `C2PA_TELEMETRY` | `0` turns error reports off |
 
 **Getting the key.** Never ask the user to paste a key into the chat or a file in the repository.
-Ask them to run `npx -y c2pa-check@0.5.0 login` (`--ci github` or `--ci gitlab` also stores it as
+Ask them to run `npx -y c2pa-check@0.6.0 login` (`--ci github` or `--ci gitlab` also stores it as
 the repository's `C2PA_API_KEY` secret through `gh` or `glab`; `--test` for a test key). It prints
 a link and a code; an owner or admin approves it in a browser; the key is saved to
 `~/.config/c2pa-check/credentials` and used whenever `C2PA_API_KEY` is unset. You cannot approve
@@ -298,8 +302,8 @@ secret) and run `apply` from the deploy job. It is safe on every deploy and dele
 ```
 
 ```bash
-npx -y c2pa-check@0.5.0 apply --ping          # webhooks (PUT by URL), monitors (by name), domains (by host)
-npx -y c2pa-check@0.5.0 apply --wait 600      # also wait up to 10 min for the domain proof
+npx -y c2pa-check@0.6.0 apply --ping          # webhooks (PUT by URL), monitors (by name), domains (by host)
+npx -y c2pa-check@0.6.0 apply --wait 600      # also wait up to 10 min for the domain proof
 ```
 
 | Part | Behaviour |
@@ -346,6 +350,7 @@ instead of creating a second one.
 | Remove, move or mark assets | `DELETE /assets/{id}` → `204` (a file still on a crawled domain comes back). `POST /assets/batch {"action": "move" \| "delete" \| "set_expects_credential", "ids": [≤ 500], "project_id", "expects_credential"}` → `{moved, merged, deleted, updated, skipped}`, one transaction; needs the `monitors` scope |
 | A file that cannot carry a credential | `"expect": "absent"` on its check (`register` sends `expects_credential: false`), or `PATCH /assets/{id} {"expects_credential": false}`. It leaves the coverage denominator and counts in `unsigned_by_design`; a valid credential found later sets it back |
 | One field the pipeline acts on | The owner picks a policy in the dashboard (**Projects → Policy**). Every verification, URL check and `verification.completed` in that project then has `decision {value: allow \| review \| block, policy_id, policy_version, reasons[]}`; branch on `decision.value`, log `reasons`. No policy → no `decision` (keep your own mapping of `credential.status`) |
+| Watermark a file yourself | `POST /assets/watermark` with the image as the body (`application/octet-stream`) and `X-Media-Type: image/png` (or `image/jpeg`, `image/webp`), `monitors` scope → the watermarked bytes, headers `X-Watermark-Id` (16 hex), `X-Watermark-Algorithm` (`com.adobe.trustmark.C`), `X-Watermark-Encoding`. Each call issues a new identifier to the organization. Sign the returned bytes and send the identifier as `watermark_id` on `POST /sign` (multipart) or on the `POST /assets` item; `415 watermark_unsupported` for any other type. `c2pa-check carry --watermark` does all of it |
 | Source of a carried file | `result.source.category` follows the parent: carried from an AI-generated original stays `ai-generated`, a composite with an AI component is `ai-composite`; `source.inherited: true` marks it |
 
 Attach `metadata` with the project's own IDs so webhooks map back to rows.
@@ -360,6 +365,7 @@ this integration: an event with no producer is silence, not a clean record.
 | Event | Produced by |
 |---|---|
 | `ping` | Creating the endpoint, `POST /webhooks/{id}/test`, `apply --ping` |
+| any event below, as a sample with `"test": true` | `POST /webhooks/{id}/test {"type": "<event>"}`, or the dashboard's **Webhooks → Send test** |
 | `usage.threshold` | Usage crossing 50 %, 80 %, 100 % of a quota (once each per period) |
 | `verification.completed` | `POST /verifications` (async uploads; sync URL checks answer inline and fire it too) |
 | `monitor.run.completed`, `monitor.regression` | A monitor (§5). Without one, never |
@@ -399,8 +405,9 @@ only). The handler runs these steps **in this order**:
    answer `5xx` so the retry is processed.
 6. **Branch on `type`**; ignore unknown types with `2xx`.
 
-Envelope: `{"id", "type", "created_at", "occurred_at", "data"}`. Payload schemas for every type
-are in the OpenAPI (`WebhookEvent*`); generate types from them.
+Envelope: `{"id", "type", "created_at", "occurred_at", "data"}`, plus `"test": true` on a sample.
+Payload schemas for every type are in the OpenAPI (`WebhookEvent*`); generate types from them. A
+handler must not change data for an event with `test: true`: log it, answer `2xx`.
 
 | Guarantee | Value |
 |---|---|
@@ -432,6 +439,18 @@ then read `GET /webhooks`. The webhook step is **done only when** `last_delivery
 | `status: failed`, `failure_reason: http_status`, `response_code` | The handler answered outside `2xx`: wrong path, or the signature check refused it (secret mismatch between receiver and `apply`) |
 | `status: pending` | Queued or between retries; read again in a few seconds |
 
+Then send one sample of every event the endpoint subscribes to, so each branch has run once before
+a real alert depends on it:
+
+```bash
+curl -fsS -X POST "https://api.c2pa.design/v1/webhooks/$ID/test" \
+  -H "Authorization: Bearer $C2PA_API_KEY" -H "Content-Type: application/json" \
+  -d '{"type":"asset.lost"}'
+```
+
+Samples carry fixed ids (`00000000-0000-7000-8000-000000000000`) that exist in no account. Each one
+shows as `last_delivery` like any delivery.
+
 Keep the example's tests: valid signature, modified body, 10-minute-old timestamp, redelivery,
 signed but unparseable body.
 
@@ -442,6 +461,7 @@ signed but unparseable body.
 | Re-encode, resize, compress, format change (PNG → WebP) | `c2pa-check carry --from src --to out` | Source is `parentOf`; same picture checked |
 | Edit of one source (chroma key, crop, retouch) | `c2pa-check carry --from src --to out --edited` | A same picture is carried; a changed one is signed as an edit (`c2pa.opened` + `c2pa.edited`, status `composed`, exit `0`) |
 | Combine (atlas, sprite sheet, collage) | `c2pa-check carry --compose a.png b.png … --to atlas.webp` | A new work: `c2pa.created` (digital source type `composite`) + `c2pa.placed`; every source is a `componentOf` ingredient with its manifest kept |
+| Keep a way back when platforms strip the credential | `c2pa-check carry --from src --to out --watermark` (needs `C2PA_API_KEY` and c2pa-check 0.6.0) | c2pa.design embeds an invisible TrustMark with an identifier issued to the organization, the manifest gets a `c2pa.soft-binding` assertion with it, and a stripped copy is matched to the original exactly (`registry_match.method: watermark`). JPEG, PNG, WebP only (`watermark_unsupported`, exit `5`); not with `--compose`. A rerun with `--out` keeps the watermarked file |
 | No credential wanted on the output, or sources unsigned | `c2pa-check register` on the sources **and** the output | Inventory and stripped-copy matching only |
 
 With `C2PA_API_KEY`, c2pa.design signs a composite as "<verified domain> via c2pa.design" when:
@@ -478,8 +498,8 @@ registers the files, in the same change. A signed file missing from the baseline
 ### Register files
 
 ```bash
-npx -y c2pa-check@0.5.0 register 'public/**/*.{jpg,png,webp}' 'design/**/*.png'   # or no globs: the checks in c2pa.json
-npx -y c2pa-check@0.5.0 --register                                                # gate and register in one run
+npx -y c2pa-check@0.6.0 register 'public/**/*.{jpg,png,webp}' 'design/**/*.png'   # or no globs: the checks in c2pa.json
+npx -y c2pa-check@0.6.0 --register                                                # gate and register in one run
 ```
 
 It checks each file locally, asks which sha256 hashes are unknown (`POST /assets/sync`) and sends
@@ -493,7 +513,7 @@ Calling the API yourself: `POST /assets` takes the **whole result object** of a 
 {"items": [{"location": "public/hero.webp", "source": "skill", "result": { …one element's "result" from `c2pa-check --format json`… }}]}
 ```
 
-Optional per item: `project_id` (§5) and `expects_credential: false`. `source`: `skill` (files in
+Optional per item: `project_id` (§5), `expects_credential: false` and `watermark_id` (an identifier `POST /assets/watermark` issued to the organization; any other value is ignored). `source`: `skill` (files in
 a repository, build or CI; what `register` sends), `upload` (files users sent your server),
 `track` (an agent hook right after writing a file). `crawl`, `verifier` and `carry` are written by
 c2pa.design; do not send them.
@@ -520,7 +540,7 @@ the same change; never lower it to make a build pass — find the file that lost
 100 only once every shipped file is carried, composed or marked `"expect": "absent"`.
 
 ```bash
-npx -y c2pa-check@0.5.0 --update-baseline
+npx -y c2pa-check@0.6.0 --update-baseline
 ```
 
 One run can write several reports: the Nth `--output` takes the Nth `--format`
@@ -530,7 +550,7 @@ One run can write several reports: the Nth `--output` takes the Nth `--format`
 GitHub Actions (the tag is the version; keep it equal to `C2PA_CHECK_VERSION` elsewhere):
 
 ```yaml
-- uses: c2pa-design/c2pa-check/action@v0.5.0
+- uses: c2pa-design/c2pa-check/action@v0.6.0
   with:
     format: junit
     output: c2pa-check.xml
@@ -543,7 +563,7 @@ GitLab CI:
 
 ```yaml
 variables:
-  C2PA_CHECK_VERSION: "0.5.0"
+  C2PA_CHECK_VERSION: "0.6.0"
 
 .c2pa:
   image: node:22-alpine
@@ -575,7 +595,7 @@ c2pa-register:
       changes: *c2pa-changes
 ```
 
-Bitbucket Pipelines (set `C2PA_CHECK_VERSION` = `0.5.0` once under Repository variables):
+Bitbucket Pipelines (set `C2PA_CHECK_VERSION` = `0.6.0` once under Repository variables):
 
 ```yaml
 pipelines:
@@ -600,7 +620,7 @@ CircleCI:
 
 ```yaml
 parameters:
-  c2pa-check-version: { type: string, default: "0.5.0" }
+  c2pa-check-version: { type: string, default: "0.6.0" }
 
 jobs:
   c2pa-check:
@@ -626,7 +646,7 @@ asset, `4` network or API call failed, `5` carry refused.
 **Docker.** Pass the key as a build secret, never `COPY` or `ARG`:
 
 ```dockerfile
-ARG C2PA_CHECK_VERSION=0.5.0
+ARG C2PA_CHECK_VERSION=0.6.0
 RUN --mount=type=secret,id=c2pa_key,env=C2PA_API_KEY npx -y c2pa-check@${C2PA_CHECK_VERSION} carry 'public/**/*.webp' --from-dir src/
 ```
 
@@ -646,7 +666,7 @@ byte-reproducible images sign before `docker build` and `COPY` the signed files.
 
 ## 9. Verify and hand over
 
-1. `npx -y c2pa-check@0.5.0 doctor --require api_key,webhook_secret` (list only what this
+1. `npx -y c2pa-check@0.6.0 doctor --require api_key,webhook_secret` (list only what this
    integration uses): key type, organization, quota left, webhook secret format, Node version,
    skill version. `--require` turns a missing value into exit `1`, so the same line is a CI
    pre-flight. Fix anything that fails before going on.

@@ -4,7 +4,7 @@ description: Verify and track C2PA Content Credentials on images, video and audi
 license: MIT OR Apache-2.0
 metadata:
   homepage: https://c2pa.design/docs/agents
-  version: "2"
+  version: "3"
 ---
 
 # c2pa-check
@@ -69,6 +69,12 @@ npx -y c2pa-check carry 'public/**/*.{webp,avif}' --from-dir src/assets   # a wh
   is spent.
 - Signer: `C2PA_SIGN_CERT` + `C2PA_SIGN_KEY` if set; else `C2PA_API_KEY` (signs as the
   organization via c2pa.design); else a local key with a warning. Never print or commit a key.
+- Watermark: with `C2PA_API_KEY`, `--watermark` also embeds an invisible TrustMark with an
+  identifier c2pa.design issues, recorded in the manifest as a `c2pa.soft-binding` assertion,
+  so a copy that loses its credential is still matched to the original. JPEG, PNG and WebP
+  only; not with `--compose`; needs c2pa-check 0.6.0. A watermark found in
+  a result (`watermarks[]`) is not proof of origin: report it next to `credential.status`,
+  never instead of it.
 - If carry is impossible, register the original (`track.mjs --push`) so stripped copies are
   still recognised.
 
